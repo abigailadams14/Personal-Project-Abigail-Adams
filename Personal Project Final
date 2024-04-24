@@ -1,0 +1,128 @@
+import yfinance as yf
+import matplotlib.pyplot as plt
+import pandas as pd
+import tkinter as tk
+from tkinter import ttk
+from tkinter import messagebox
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+import numpy as np
+
+def calculate_bond_price(face_value, coupon_rate, years_to_maturity, yield_to_maturity):
+    coupon_payment = face_value * coupon_rate
+    discount_factor = 0
+    years_to_maturity = int(years_to_maturity)
+    
+    for i in range(1, years_to_maturity + 1):
+        discount_factor += coupon_payment / ((1 + yield_to_maturity) ** i)
+    discount_factor += face_value / ((1 + yield_to_maturity) ** years_to_maturity)
+    
+    return discount_factor
+
+def calculate_future_value(bond_price, years_to_maturity, yield_to_maturity):
+    future_value = bond_price * ((1 + yield_to_maturity) ** years_to_maturity)
+    return future_value
+
+def fetch_bond_yield_data(bond_ticker):
+    bond = yf.Ticker(bond_ticker)
+    bond_data = bond.history(period="1y")
+    return bond_data['Close'] / 100
+
+def train_linear_regression_model(data):
+    X = np.arange(len(data)).reshape(-1, 1)
+    y = data.values.reshape(-1, 1)
+    
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+    
+    y_pred = model.predict(X_test)
+    
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    print(f"Root Mean Square Error (RMSE): {rmse}")
+    
+    return model
+
+def update_yield_data_with_ml():
+    print("Updating yield data with ML...")
+    
+    bond_tickers = ["^TNX", "^TYX", "^FVX"]
+    bond_yield_data_list = [fetch_bond_yield_data(ticker) for ticker in bond_tickers]
+    
+    model = train_linear_regression_model(bond_yield_data_list[0])
+    
+    future_indices = np.arange(len(bond_yield_data_list[0]), len(bond_yield_data_list[0]) + 10).reshape(-1, 1)
+    future_yield_predictions = model.predict(future_indices)
+    
+    plt.figure(figsize=(12, 6))
+    plt.plot(bond_yield_data_list[0].index, bond_yield_data_list[0].values, marker='o', linestyle='-', label="Historical Data")
+    plt.plot(future_indices, future_yield_predictions, marker='x', linestyle='--', label="Predictions")
+    plt.title('Bond Yield Prediction using Linear Regression')
+    plt.xlabel('Date')
+    plt.ylabel('Yield (%)')
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+    print("Finished updating yield data with ML.")
+
+def calculate_and_display_results():
+    print("Calculating and displaying results...")
+    
+    bond_parameters = [
+        (float(face_value_entry1.get()), float(coupon_rate_entry1.get()), float(years_to_maturity_entry1.get())),
+        (float(face_value_entry2.get()), float(coupon_rate_entry2.get()), float(years_to_maturity_entry2.get())),
+        (float(face_value_entry3.get()), float(coupon_rate_entry3.get()), float(years_to_maturity_entry3.get()))
+    ]
+    
+    bond_tickers = ["^TNX", "^TYX", "^FVX"]
+    
+    results = []
+    for params, ticker in zip(bond_parameters, bond_tickers):
+        face_value, coupon_rate, years_to_maturity = params
+        
+        bond_yield_data = fetch_bond_yield_data(ticker)
+        current_yield = bond_yield_data[-1]
+        bond_price = calculate_bond_price(face_value, coupon_rate, years_to_maturity, current_yield)
+        future_value = calculate_future_value(bond_price, years_to_maturity, current_yield)
+        
+        results.append((bond_price, future_value))
+    
+    result_text = (
+        f"Bond Price and Future Value Comparison:\n"
+        f"Bond 1: Price=${results[0][0]:.2f}, Future Value=${results[0][1]:.2f}\n"
+        f"Bond 2: Price=${results[1][0]:.2f}, Future Value=${results[1][1]:.2f}\n"
+        f"Bond 3: Price=${results[2][0]:.2f}, Future Value=${results[2][1]:.2f}"
+    )
+    
+    messagebox.showinfo("Results", result_text)
+
+# Create main window
+root = tk.Tk()
+root.title("Advanced Bond Valuation and Projection Tool")
+
+# Create input fields and labels for up to 3 bonds
+labels = ["Face Value:", "Annual Coupon Rate (decimal):", "Years to Maturity:"]
+entries = []
+
+for i in range(3):
+    for j, label in enumerate(labels):
+        ttk.Label(root, text=f"{label} (Bond {i+1}):").grid(row=i*5, column=j*2, padx=10, pady=5)
+        entry = ttk.Entry(root)
+        entry.grid(row=i*5, column=j*2+1, padx=10, pady=5)
+        entries.append(entry)
+
+face_value_entry1, coupon_rate_entry1, years_to_maturity_entry1 = entries[:3]
+face_value_entry2, coupon_rate_entry2, years_to_maturity_entry2 = entries[3:6]
+face_value_entry3, coupon_rate_entry3, years_to_maturity_entry3 = entries[6:]
+
+# Create Calculate button
+calculate_button = ttk.Button(root, text="Calculate", command=calculate_and_display_results)
+calculate_button.grid(row=15, column=0, columnspan=6, padx=10, pady=10)
+
+# Create Refresh button with ML
+refresh_button_ml = ttk.Button(root, text="Refresh Yield Data with ML", command=update_yield_data_with_ml)
+refresh_button_ml.grid(row=16, column=0, columnspan=6, padx=10, pady=10)
+
+root.mainloop()
